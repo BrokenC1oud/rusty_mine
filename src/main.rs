@@ -1,9 +1,9 @@
 use clap::Parser;
 use eyre::Result;
-use tracing::Level;
-use tracing_subscriber::EnvFilter;
 use rusty_mine::config::load_config;
 use rusty_mine::server::Server;
+use tracing::Level;
+use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -38,8 +38,6 @@ fn enable_logging(verbose: u8) {
 
     tracing_subscriber::fmt()
         .with_thread_names(true)
-        .with_env_filter(EnvFilter::from_default_env()
-            .add_directive(level.into())
-        )
+        .with_env_filter(EnvFilter::from_default_env().add_directive(level.into()))
         .init();
 }

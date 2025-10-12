@@ -1,5 +1,5 @@
-use std::io::{Cursor, Read, Write};
 use crate::protocol::types::Type;
+use std::io::{Cursor, Read, Write};
 
 #[derive(Debug)]
 pub struct Long(i64);

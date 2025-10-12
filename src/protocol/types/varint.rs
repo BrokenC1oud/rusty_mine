@@ -1,6 +1,6 @@
-use std::io::Cursor;
 use crate::protocol::types::Type;
 use crate::protocol::utils::{read_u8, write_u8};
+use std::io::Cursor;
 
 #[derive(Debug)]
 pub struct VarInt(pub i32);
@@ -13,7 +13,9 @@ impl Type for VarInt {
         loop {
             let byte = read_u8(reader)?;
             value |= ((byte & 0x7F) as i32) << idx * 7;
-            if byte & 0x80 == 0 { break; }
+            if byte & 0x80 == 0 {
+                break;
+            }
             idx += 1;
         }
 

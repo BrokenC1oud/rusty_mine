@@ -1,6 +1,6 @@
-use std::io::ErrorKind;
 use eyre::{Report, Result};
 use serde::{Deserialize, Serialize};
+use std::io::ErrorKind;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
 
@@ -15,9 +15,15 @@ pub struct Config {
 }
 
 impl Config {
-    fn default_server_port() -> usize { 25565 }
-    fn default_max_players() -> usize { 20 }
-    fn default_motd() -> String { String::from("A Minecraft Server") }
+    fn default_server_port() -> usize {
+        25565
+    }
+    fn default_max_players() -> usize {
+        20
+    }
+    fn default_motd() -> String {
+        String::from("A Minecraft Server")
+    }
 }
 
 impl Default for Config {
@@ -36,11 +42,12 @@ pub async fn load_config(file: String) -> Result<Config> {
         Err(e) => match e.kind() {
             ErrorKind::NotFound => {
                 let mut file = File::create_new(file).await?;
-                file.write(serde_java_properties::to_string(&Config::default())?.as_bytes()).await?;
+                file.write(serde_java_properties::to_string(&Config::default())?.as_bytes())
+                    .await?;
                 file
-            },
+            }
             _ => Err(Report::new(e))?,
-        }
+        },
     };
     let mut reader = BufReader::new(file);
     let mut config = String::new();

@@ -1,5 +1,5 @@
+use crate::protocol::types::{String, UnsignedShort, VarInt};
 use macros::Packet;
-use crate::protocol::types::{VarInt, String, UnsignedShort};
 
 #[derive(Debug, Packet)]
 #[packet(id = 0x00)]

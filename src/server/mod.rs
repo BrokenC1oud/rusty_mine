@@ -1,15 +1,15 @@
+use crate::config::Config;
+use crate::protocol::packets::status::{PongResponse, StatusResponse};
+use crate::protocol::packets::{HandshakingPacket, LoginPacket, PacketRegistry, StatusPacket};
+use crate::protocol::utils::{Description, Players, ServerListPingStatusResponse, Version};
+use crate::protocol::{PacketStream, ProtocolState, types};
+use eyre::{Result, eyre};
 use std::io;
 use std::io::ErrorKind;
 use std::sync::Arc;
-use crate::config::Config;
-use eyre::{eyre, Result};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::RwLock;
 use tracing::{debug, error, info};
-use crate::protocol::{types, PacketStream, ProtocolState};
-use crate::protocol::packets::{HandshakingPacket, PacketRegistry, StatusPacket};
-use crate::protocol::packets::status::{PongResponse, StatusResponse};
-use crate::protocol::utils::{Description, Players, ServerListPingStatusResponse, Version};
 
 #[derive(Debug)]
 pub struct ServerState {
@@ -69,16 +69,23 @@ impl Client {
                     if let Some(io_error) = e.downcast_ref::<io::Error>() {
                         if io_error.kind() == ErrorKind::UnexpectedEof {
                             debug!("client disconnected");
-                            return Ok(())
+                            return Ok(());
                         }
                     }
-                    return Err(e)
-                },
+                    return Err(e);
+                }
             };
 
             match packet {
-                PacketRegistry::Handshaking(handshaking_packet) => self.handle_handshaking_packet(handshaking_packet).await?,
-                PacketRegistry::Status(status_packet) => self.handle_status_packet(status_packet).await?,
+                PacketRegistry::Handshaking(handshaking_packet) => {
+                    self.handle_handshaking_packet(handshaking_packet).await?
+                }
+                PacketRegistry::Status(status_packet) => {
+                    self.handle_status_packet(status_packet).await?
+                }
+                PacketRegistry::Login(login_packet) => {
+                    self.handle_login_packet(login_packet).await?
+                }
             }
         }
     }
@@ -86,7 +93,15 @@ impl Client {
     pub async fn handle_handshaking_packet(&mut self, packet: HandshakingPacket) -> Result<()> {
         let HandshakingPacket::Handshake(inner) = packet;
 
-        if u32::from(inner.protocol_version) != self.server_state.as_ref().unwrap().read().await.protocol_version_number {
+        if u32::from(inner.protocol_version)
+            != self
+                .server_state
+                .as_ref()
+                .unwrap()
+                .read()
+                .await
+                .protocol_version_number
+        {
             Err(eyre!("Unmatched protocol version"))?
         }
 
@@ -104,30 +119,72 @@ impl Client {
             StatusPacket::StatusRequest(_) => {
                 let resp = ServerListPingStatusResponse {
                     version: Version {
-                        name: self.server_state.as_ref().unwrap().read().await.version_name.clone(),
-                        protocol: self.server_state.as_ref().unwrap().read().await.protocol_version_number,
+                        name: self
+                            .server_state
+                            .as_ref()
+                            .unwrap()
+                            .read()
+                            .await
+                            .version_name
+                            .clone(),
+                        protocol: self
+                            .server_state
+                            .as_ref()
+                            .unwrap()
+                            .read()
+                            .await
+                            .protocol_version_number,
                     },
                     players: Players {
-                        max: self.server_state.as_ref().unwrap().read().await.config.max_players,
+                        max: self
+                            .server_state
+                            .as_ref()
+                            .unwrap()
+                            .read()
+                            .await
+                            .config
+                            .max_players,
                         online: 0,
                     },
                     description: Description {
-                        text: self.server_state.as_ref().unwrap().read().await.config.motd.clone(),
+                        text: self
+                            .server_state
+                            .as_ref()
+                            .unwrap()
+                            .read()
+                            .await
+                            .config
+                            .motd
+                            .clone(),
                     },
                 };
 
-                let packet = StatusResponse { response: types::String(serde_json::to_string(&resp)?) };
-                self.stream.write_packet(PacketRegistry::Status(StatusPacket::StatusResponse(packet))).await?;
+                let packet = StatusResponse {
+                    response: types::String(serde_json::to_string(&resp)?),
+                };
+                self.stream
+                    .write_packet(PacketRegistry::Status(StatusPacket::StatusResponse(packet)))
+                    .await?;
                 debug!("status response packet sent");
             }
             StatusPacket::PingRequest(packet) => {
-                self.stream.write_packet(PacketRegistry::Status(StatusPacket::PongResponse(PongResponse { timestamp: packet.timestamp }))).await?;
+                self.stream
+                    .write_packet(PacketRegistry::Status(StatusPacket::PongResponse(
+                        PongResponse {
+                            timestamp: packet.timestamp,
+                        },
+                    )))
+                    .await?;
                 debug!("pong response packet sent");
             }
             _ => Err(eyre!("Invalid packet received"))?,
         }
 
         Ok(())
+    }
+
+    pub async fn handle_login_packet(&mut self, packet: LoginPacket) -> Result<()> {
+        Err(eyre!("login not yet implemented"))?
     }
 }
 
@@ -139,10 +196,7 @@ impl Server {
 
         let state = Arc::new(RwLock::new(ServerState::new(config)));
 
-        Ok(Server {
-            listener,
-            state,
-        })
+        Ok(Server { listener, state })
     }
 
     pub async fn run(self) -> Result<()> {

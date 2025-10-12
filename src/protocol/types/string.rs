@@ -1,6 +1,5 @@
+use crate::protocol::types::{Type, VarInt};
 use std::io::{Cursor, Read, Write};
-use crate::protocol::types::Type;
-use crate::protocol::types::varint::VarInt;
 
 #[derive(Debug)]
 pub struct String(pub std::string::String);

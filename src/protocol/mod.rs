@@ -1,7 +1,9 @@
-use crate::protocol::packets::{HandshakingPacket, Packet, PacketRegistry, StatusPacket};
-use crate::protocol::types::varint::VarInt;
+use crate::protocol::packets::{
+    HandshakingPacket, LoginPacket, Packet, PacketRegistry, StatusPacket,
+};
 use crate::protocol::types::Type;
-use eyre::{eyre, Result};
+use crate::protocol::types::VarInt;
+use eyre::{Result, eyre};
 use std::io::Cursor;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
@@ -39,7 +41,7 @@ where
 
 impl<S> PacketStream<S>
 where
-    S: AsyncRead + AsyncWrite + Unpin
+    S: AsyncRead + AsyncWrite + Unpin,
 {
     pub fn new(stream: S) -> Self {
         Self(stream)
@@ -60,7 +62,7 @@ where
         match protocol_state {
             ProtocolState::Handshaking => PacketRegistry::parse_handshaking(raw_packet),
             ProtocolState::Status => PacketRegistry::parse_status(raw_packet),
-            ProtocolState::Login => todo!(),
+            ProtocolState::Login => PacketRegistry::parse_login(raw_packet),
             ProtocolState::Configuration => todo!(),
             ProtocolState::Play => todo!(),
         }
@@ -71,12 +73,15 @@ where
         match packet {
             PacketRegistry::Handshaking(packet) => match packet {
                 HandshakingPacket::Handshake(real_packet) => real_packet.write(&mut buffer)?,
-            }
+            },
             PacketRegistry::Status(packet) => match packet {
                 StatusPacket::StatusResponse(real_packet) => real_packet.write(&mut buffer)?,
                 StatusPacket::PongResponse(real_packet) => real_packet.write(&mut buffer)?,
-                _ => Err(eyre!("Invalid packet not sent"))?
-            }
+                _ => Err(eyre!("Invalid packet not sent"))?,
+            },
+            PacketRegistry::Login(packet) => match packet {
+                LoginPacket::Disconnect(real_packet) => real_packet.write(&mut buffer)?,
+            },
         }
 
         self.0.write_u8(buffer.len() as u8).await?;
@@ -95,7 +100,7 @@ where
 
             match <VarInt as Type>::read(&mut Cursor::new(&mut varint_buf)) {
                 Ok(length) => return Ok(length),
-                Err(_) => {},
+                Err(_) => {}
             }
         }
 

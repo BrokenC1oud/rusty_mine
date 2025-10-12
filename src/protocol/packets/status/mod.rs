@@ -1,5 +1,5 @@
-use macros::Packet;
 use crate::protocol::types::{Long, String};
+use macros::Packet;
 
 #[derive(Debug, Packet)]
 #[packet(id = 0x00)]

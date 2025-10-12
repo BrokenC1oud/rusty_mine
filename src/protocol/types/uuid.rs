@@ -2,18 +2,19 @@ use crate::protocol::types::Type;
 use std::io::{Cursor, Read, Write};
 
 #[derive(Debug)]
-pub struct UnsignedShort(pub u16);
+pub struct Uuid(pub uuid::Uuid);
 
-impl Type for UnsignedShort {
+impl Type for Uuid {
     fn read(reader: &mut Cursor<&[u8]>) -> eyre::Result<Self> {
-        let mut buffer = [0u8; 2];
-        reader.read_exact(&mut buffer)?;
+        let mut bytes = [0u8; 16];
+        reader.read(&mut bytes)?;
 
-        Ok(Self(u16::from_be_bytes(buffer)))
+        Ok(Uuid(uuid::Uuid::from_bytes(bytes)))
     }
 
     fn write(&self, writer: &mut Vec<u8>) -> eyre::Result<()> {
-        writer.write_all(&self.0.to_be_bytes())?;
+        writer.write(self.0.as_bytes())?;
+
         Ok(())
     }
 }

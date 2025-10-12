@@ -21,3 +21,4 @@ serde-java-properties = "0.2.0"
 serde_json = "1.0.145"
 
 macros = { path = "macros" }
+uuid = "1.18.1"

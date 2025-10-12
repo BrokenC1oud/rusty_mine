@@ -1,5 +1,5 @@
-use std::io::{Cursor, Read, Write};
 use serde::{Deserialize, Serialize};
+use std::io::{Cursor, Read, Write};
 
 pub fn read_u8(reader: &mut Cursor<&[u8]>) -> eyre::Result<u8> {
     let mut buffer = vec![0u8; 1];

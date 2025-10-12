@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{DeriveInput, parse_macro_input, Data, Fields, Meta, Lit};
+use syn::{Data, DeriveInput, Fields, Lit, Meta, parse_macro_input};
 
 #[proc_macro_derive(Packet, attributes(packet))]
 pub fn derive_trait_func(input: TokenStream) -> TokenStream {
@@ -13,21 +13,21 @@ pub fn derive_trait_func(input: TokenStream) -> TokenStream {
         Data::Struct(data_struct) => match &data_struct.fields {
             Fields::Named(fields_named) => &fields_named.named,
             _ => panic!("#[derive(Packet)] only supports named fields"),
-        }
+        },
         _ => panic!("#[derive(Packet)] is only defined for structs"),
     };
 
     let field_names = fields
         .iter()
-        .map(|field| (field.ident.as_ref().unwrap(), field.ty.clone()))
+        .map(|field| (field.ident.as_ref().unwrap(), &field.ty))
         .collect::<Vec<_>>();
 
     let read_calls = field_names.iter().map(|(name, ty)| {
-        quote! { #name: #ty::read(reader)? }
+        quote! { #name: <#ty>::read(reader)? }
     });
 
     let write_calls = field_names.iter().map(|(name, _)| {
-        quote! { self.#name.write(writer)? }
+        quote! { self.#name.write(writer)?; }
     });
 
     let expanded = quote! {
@@ -56,9 +56,11 @@ fn parse_container_attribute(input: &DeriveInput) -> Option<u8> {
     for attr in &input.attrs {
         if attr.path().is_ident("packet") {
             if let Meta::List(meta_list) = &attr.meta {
-                let nested = meta_list.parse_args_with(
-                    syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated
-                ).ok()?;
+                let nested = meta_list
+                    .parse_args_with(
+                        syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated,
+                    )
+                    .ok()?;
 
                 for meta in nested {
                     if let Meta::NameValue(name_value) = meta {
