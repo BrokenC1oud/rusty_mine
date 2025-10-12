@@ -6,7 +6,6 @@ use crate::protocol::RawPacket;
 use eyre::{eyre, Result};
 use std::io::Cursor;
 use crate::protocol::packets::status::{PingRequest, PongResponse, StatusRequest, StatusResponse};
-use crate::protocol::packets::StatusPacket::{PingRequest, StatusRequest};
 
 pub trait Packet: Sized {
     fn read(reader: &mut Cursor<&[u8]>) -> Result<Self>;

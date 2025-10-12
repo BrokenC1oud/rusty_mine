@@ -3,12 +3,12 @@ use crate::protocol::types::{Long, String};
 
 #[derive(Debug, Packet)]
 pub struct StatusResponse {
-    response: String,
+    pub response: String,
 }
 
 #[derive(Debug, Packet)]
 pub struct PongResponse {
-    timestamp: Long,
+    pub timestamp: Long,
 }
 
 #[derive(Debug, Packet)]
@@ -16,5 +16,5 @@ pub struct StatusRequest {}
 
 #[derive(Debug, Packet)]
 pub struct PingRequest {
-    timestamp: Long,
+    pub timestamp: Long,
 }

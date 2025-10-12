@@ -4,8 +4,9 @@ use eyre::{eyre, Result};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::RwLock;
 use tracing::{debug, error, info};
-use crate::protocol::{PacketStream, ProtocolState};
+use crate::protocol::{types, PacketStream, ProtocolState};
 use crate::protocol::packets::{HandshakingPacket, PacketRegistry, StatusPacket};
+use crate::protocol::packets::status::{PongResponse, StatusResponse};
 use crate::protocol::utils::{Description, Players, ServerListPingStatusResponse, Version};
 
 #[derive(Debug)]
@@ -99,8 +100,15 @@ impl Client {
                         text: self.server_state.as_ref().unwrap().read().await.config.motd.clone(),
                     },
                 };
+
+                let packet = StatusResponse { response: types::String(serde_json::to_string(&resp)?) };
+                self.stream.write_packet(PacketRegistry::Status(StatusPacket::StatusResponse(packet))).await?;
+                debug!("status response packet sent");
             }
-            StatusPacket::PingRequest(packet) => {}
+            StatusPacket::PingRequest(packet) => {
+                self.stream.write_packet(PacketRegistry::Status(StatusPacket::PongResponse(PongResponse { timestamp: packet.timestamp }))).await?;
+                debug!("pong response packet sent");
+            }
             _ => Err(eyre!("Invalid packet received"))?,
         }
 
@@ -142,7 +150,12 @@ impl Server {
                     let state_clone_ = self.state.clone();
                     let client = Client::new(socket);
                     tokio::spawn(async move {
-                        client.handle_client(state_clone).await.unwrap();
+                        if let Err(e) = client.handle_client(state_clone).await {
+                            error!("client handler error: {:?}", e);
+                        }
+                        // Ensure we decrement online count when the task finishes.
+                        // Decrement online count. Awaiting the write lock here is fine
+                        // because this is running inside the background task.
                         state_clone_.write().await.online -= 1;
                     });
                 }

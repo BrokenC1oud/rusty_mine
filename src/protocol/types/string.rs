@@ -3,7 +3,7 @@ use crate::protocol::types::Type;
 use crate::protocol::types::varint::VarInt;
 
 #[derive(Debug)]
-pub struct String(std::string::String);
+pub struct String(pub std::string::String);
 
 impl Type for String {
     fn read(reader: &mut Cursor<&[u8]>) -> eyre::Result<Self> {

@@ -3,10 +3,10 @@ use crate::protocol::types::varint::VarInt;
 use crate::protocol::types::Type;
 use eyre::{eyre, Result};
 use std::io::Cursor;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub mod packets;
-mod types;
+pub mod types;
 pub mod utils;
 
 #[derive(Debug)]
@@ -70,31 +70,45 @@ where
         let mut buffer = vec![];
         match packet {
             PacketRegistry::Handshaking(packet) => match packet {
-                HandshakingPacket::Handshake(real_packet) => real_packet.write(&mut buffer),
+                HandshakingPacket::Handshake(real_packet) => real_packet.write(&mut buffer)?,
             }
             PacketRegistry::Status(packet) => match packet {
-                StatusPacket::StatusResponse(real_packet) => real_packet.write(&mut buffer),
-                StatusPacket::PongResponse(real_packet) => real_packet.write(&mut buffer),
-                _ => Err(eyre!("Invalid packet not sent"))
+                StatusPacket::StatusResponse(real_packet) => real_packet.write(&mut buffer)?,
+                StatusPacket::PongResponse(real_packet) => real_packet.write(&mut buffer)?,
+                _ => Err(eyre!("Invalid packet not sent"))?
             }
         }
+
+        self.0.write_all(&buffer).await?;
+
+        Ok(())
     }
 
     async fn read_varint(&mut self) -> Result<VarInt> {
-        let mut varint_buf = Vec::with_capacity(5);
+        // Read bytes one-by-one and decode VarInt inline. This avoids attempting
+        // to decode from a partial buffer (which would error with "failed to
+        // fill whole buffer") and correctly handles the continuation bit.
+        let mut num_read: u32 = 0;
+        let mut result: i32 = 0;
 
-        for _ in 0..5 {
+        loop {
             let mut byte = [0u8; 1];
             self.0.read_exact(&mut byte).await?;
-            varint_buf.push(byte[0]);
 
-            return match <VarInt as Type>::read(&mut Cursor::new(&mut varint_buf)) {
-                Ok(length) => Ok(length),
-                Err(e) => Err(eyre!(e)),
+            let value = (byte[0] & 0x7F) as i32;
+            result |= value << (7 * num_read);
+
+            num_read += 1;
+            if num_read > 5 {
+                return Err(eyre!("VarInt too long"));
+            }
+
+            if byte[0] & 0x80 == 0 {
+                break;
             }
         }
 
-        Err(eyre!("VarInt too long"))
+        Ok(VarInt(result))
     }
 
     async fn read_packet_length(&mut self) -> Result<usize> {
