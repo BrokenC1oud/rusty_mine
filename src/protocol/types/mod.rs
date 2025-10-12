@@ -24,6 +24,7 @@ pub use prefixed::{PrefixedArray, PrefixedOptional};
 pub use property::Property;
 pub use string::String;
 pub use ushort::UnsignedShort;
+pub use uuid::Uuid;
 pub use varint::VarInt;
 
 pub trait Type: Sized {

@@ -7,6 +7,7 @@ use eyre::{Result, eyre};
 use std::io::Cursor;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
+pub mod login;
 pub mod packets;
 pub mod types;
 pub mod utils;
@@ -80,11 +81,19 @@ where
                 _ => Err(eyre!("Invalid packet not sent"))?,
             },
             PacketRegistry::Login(packet) => match packet {
-                LoginPacket::Disconnect(real_packet) => real_packet.write(&mut buffer)?,
+                LoginPacket::DisconnectClient(real_packet) => real_packet.write(&mut buffer)?,
+                LoginPacket::EncryptionRequest(real_packet) => real_packet.write(&mut buffer)?,
+                LoginPacket::LoginSuccess(real_packet) => real_packet.write(&mut buffer)?,
+                LoginPacket::SetCompression(real_packet) => real_packet.write(&mut buffer)?,
+                LoginPacket::LoginPluginRequest(real_packet) => real_packet.write(&mut buffer)?,
+                LoginPacket::CookieRequest(real_packet) => real_packet.write(&mut buffer)?,
+                _ => Err(eyre!("Invalid packet not sent"))?,
             },
         }
 
-        self.0.write_u8(buffer.len() as u8).await?;
+        let mut length_buf: Vec<u8> = Vec::new();
+        VarInt(buffer.len() as i32).write(&mut length_buf)?;
+        self.0.write_all(&length_buf).await?;
         self.0.write_all(&buffer).await?;
 
         Ok(())

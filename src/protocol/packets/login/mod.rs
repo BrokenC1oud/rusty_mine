@@ -1,15 +1,24 @@
 use crate::protocol::types::Byte;
 use crate::protocol::types::Identifier;
-use crate::protocol::types::uuid::Uuid;
+use crate::protocol::types::Uuid;
 use crate::protocol::types::{
     Boolean, ByteArray, GameProfile, PrefixedArray, PrefixedOptional, String, VarInt,
 };
 use macros::Packet;
+use serde_json::json;
 
 #[derive(Debug, Packet)]
 #[packet(id = 0x00)]
 pub struct DisconnectClient {
     pub reason: String,
+}
+
+impl DisconnectClient {
+    pub fn text(reason: std::string::String) -> Self {
+        Self {
+            reason: String(json!({"text": reason}).to_string()),
+        }
+    }
 }
 
 #[derive(Debug, Packet)]

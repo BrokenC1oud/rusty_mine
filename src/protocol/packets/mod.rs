@@ -4,7 +4,11 @@ pub mod status;
 
 use crate::protocol::RawPacket;
 use crate::protocol::packets::handshaking::Handshake;
-use crate::protocol::packets::login::DisconnectClient;
+use crate::protocol::packets::login::{
+    CookieRequest, CookieResponse, DisconnectClient, EncryptionRequest, EncryptionResponse,
+    LoginAcknowledged, LoginPluginRequest, LoginPluginResponse, LoginStart, LoginSuccess,
+    SetCompression,
+};
 use crate::protocol::packets::status::{PingRequest, PongResponse, StatusRequest, StatusResponse};
 use eyre::{Result, eyre};
 use std::io::Cursor;
@@ -70,15 +74,46 @@ impl StatusPacket {
 
 #[derive(Debug)]
 pub enum LoginPacket {
-    Disconnect(DisconnectClient),
+    LoginStart(LoginStart),
+    EncryptionResponse(EncryptionResponse),
+    LoginPluginResponse(LoginPluginResponse),
+    LoginAcknowledged(LoginAcknowledged),
+    CookieResponse(CookieResponse),
+
+    DisconnectClient(DisconnectClient),
+    EncryptionRequest(EncryptionRequest),
+    LoginSuccess(LoginSuccess),
+    SetCompression(SetCompression),
+    LoginPluginRequest(LoginPluginRequest),
+    CookieRequest(CookieRequest),
 }
 
 impl LoginPacket {
     pub fn parse(raw_packet: RawPacket) -> Result<Self> {
         if let Some(packet_id) = raw_packet.packet_id() {
             match packet_id {
-                DisconnectClient::PACKET_ID => {
-                    return Ok(LoginPacket::Disconnect(DisconnectClient::read(
+                LoginStart::PACKET_ID => {
+                    return Ok(LoginPacket::LoginStart(LoginStart::read(
+                        &mut Cursor::new(&raw_packet.content()),
+                    )?));
+                }
+                EncryptionResponse::PACKET_ID => {
+                    return Ok(LoginPacket::EncryptionResponse(EncryptionResponse::read(
+                        &mut Cursor::new(&raw_packet.content()),
+                    )?));
+                }
+                LoginPluginResponse::PACKET_ID => {
+                    return Ok(LoginPacket::LoginPluginResponse(LoginPluginResponse::read(
+                        &mut Cursor::new(&raw_packet.content()),
+                    )?));
+                }
+                LoginAcknowledged::PACKET_ID => {
+                    return Ok(LoginPacket::LoginAcknowledged(LoginAcknowledged::read(
+                        &mut Cursor::new(&raw_packet.content()),
+                    )?));
+                }
+                CookieResponse::PACKET_ID => {
+                    return Ok(LoginPacket::CookieResponse(CookieResponse::read(
                         &mut Cursor::new(&raw_packet.content()),
                     )?));
                 }

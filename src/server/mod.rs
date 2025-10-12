@@ -1,31 +1,47 @@
 use crate::config::Config;
+use crate::protocol::login::{EncryptionState, LoginState, MojangAuthenticateResult};
+use crate::protocol::packets::login::{DisconnectClient, EncryptionRequest, LoginSuccess};
 use crate::protocol::packets::status::{PongResponse, StatusResponse};
 use crate::protocol::packets::{HandshakingPacket, LoginPacket, PacketRegistry, StatusPacket};
+use crate::protocol::types::{Boolean, Byte, GameProfile, PrefixedArray};
 use crate::protocol::utils::{Description, Players, ServerListPingStatusResponse, Version};
 use crate::protocol::{PacketStream, ProtocolState, types};
 use eyre::{Result, eyre};
+use rsa::pkcs1::EncodeRsaPublicKey;
+use rsa::pkcs8::EncodePublicKey;
+use rsa::rand_core::{OsRng, RngCore};
+use rsa::{Pkcs1v15Encrypt, RsaPrivateKey};
+use sha1::{Digest, Sha1};
 use std::io;
 use std::io::ErrorKind;
+use std::str::FromStr;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::RwLock;
 use tracing::{debug, error, info};
+use uuid::Uuid;
 
 #[derive(Debug)]
 pub struct ServerState {
     config: Config,
+
     protocol_version_number: u32,
     version_name: String,
+
+    private_key: RsaPrivateKey,
 
     online: usize,
 }
 
 impl ServerState {
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: Config, private_key: RsaPrivateKey) -> Self {
         Self {
             config,
+
             protocol_version_number: 773,
             version_name: String::from("1.21.10"),
+
+            private_key,
 
             online: 0,
         }
@@ -39,10 +55,20 @@ pub struct Server {
 }
 
 #[derive(Debug)]
+pub struct PlayerInfo {
+    name: String,
+    uuid: Uuid,
+}
+
+#[derive(Debug)]
 pub struct Client {
     stream: PacketStream<TcpStream>,
 
     protocol_state: ProtocolState,
+    login_state: Option<LoginState>,
+    encryption_state: Option<EncryptionState>,
+
+    player_info: Option<PlayerInfo>,
 
     server_state: Option<Arc<RwLock<ServerState>>>,
 }
@@ -51,7 +77,13 @@ impl Client {
     pub fn new(stream: TcpStream) -> Self {
         Client {
             stream: PacketStream::new(stream),
+
             protocol_state: ProtocolState::Handshaking,
+            login_state: None,
+            encryption_state: None,
+
+            player_info: None,
+
             server_state: None,
         }
     }
@@ -165,7 +197,6 @@ impl Client {
                 self.stream
                     .write_packet(PacketRegistry::Status(StatusPacket::StatusResponse(packet)))
                     .await?;
-                debug!("status response packet sent");
             }
             StatusPacket::PingRequest(packet) => {
                 self.stream
@@ -175,7 +206,6 @@ impl Client {
                         },
                     )))
                     .await?;
-                debug!("pong response packet sent");
             }
             _ => Err(eyre!("Invalid packet received"))?,
         }
@@ -184,17 +214,198 @@ impl Client {
     }
 
     pub async fn handle_login_packet(&mut self, packet: LoginPacket) -> Result<()> {
-        Err(eyre!("login not yet implemented"))?
+        match packet {
+            LoginPacket::LoginStart(packet) => {
+                if let Some(_) = &self.login_state {
+                    self.stream
+                        .write_packet(PacketRegistry::Login(LoginPacket::DisconnectClient(
+                            DisconnectClient {
+                                reason: types::String(
+                                    r#"{"text": "Invalid Login Sequence"}"#.to_string(),
+                                ),
+                            },
+                        )))
+                        .await?;
+
+                    Err(eyre!("Invalid Login Sequence"))?
+                } else {
+                    self.login_state = Some(LoginState::Start);
+                    self.player_info = Some(PlayerInfo {
+                        name: packet.name.0,
+                        uuid: packet.uuid.0,
+                    });
+                }
+
+                let public_key = self
+                    .server_state
+                    .as_ref()
+                    .unwrap()
+                    .read()
+                    .await
+                    .private_key
+                    .to_public_key()
+                    .to_public_key_der()?
+                    .to_vec();
+
+                let verify_token = OsRng.next_u32().to_be_bytes();
+
+                debug!("verify_token: {:?}", verify_token);
+
+                self.encryption_state = Some(EncryptionState {
+                    verify_token,
+                    shared_secret: None,
+                    initial_vector: None,
+                });
+
+                self.stream
+                    .write_packet(PacketRegistry::Login(LoginPacket::EncryptionRequest(
+                        EncryptionRequest {
+                            server_id: types::String("".to_string()),
+                            public_key: PrefixedArray(
+                                public_key.iter().map(|&b| Byte(b)).collect(),
+                            ),
+                            verify_token: PrefixedArray(
+                                verify_token.iter().map(|&b| Byte(b)).collect(),
+                            ),
+                            should_authenticate: Boolean(true),
+                        },
+                    )))
+                    .await?;
+            }
+            LoginPacket::EncryptionResponse(packet) => {
+                let deciphered_verify_token = self
+                    .server_state
+                    .as_ref()
+                    .unwrap()
+                    .read()
+                    .await
+                    .private_key
+                    .decrypt(
+                        Pkcs1v15Encrypt,
+                        &packet
+                            .verify_token
+                            .0
+                            .iter()
+                            .map(|b| b.0)
+                            .collect::<Vec<_>>(),
+                    )?;
+                debug!("deciphered_verify_token: {:?}", deciphered_verify_token);
+
+                if &deciphered_verify_token == &self.encryption_state.as_ref().unwrap().verify_token
+                {
+                    debug!("which is a match");
+                    self.login_state = Some(LoginState::Verified);
+
+                    let shared_secret = self
+                        .server_state
+                        .as_ref()
+                        .unwrap()
+                        .read()
+                        .await
+                        .private_key
+                        .decrypt(
+                            Pkcs1v15Encrypt,
+                            &packet
+                                .shared_secret
+                                .0
+                                .iter()
+                                .map(|b| b.0)
+                                .collect::<Vec<_>>(),
+                        )?
+                        .try_into()
+                        .map_err(|e| eyre!("Failed to decrypt shared secret: {:?}", e))?;
+
+                    self.encryption_state.as_mut().unwrap().shared_secret = Some(shared_secret);
+                    self.encryption_state.as_mut().unwrap().initial_vector = Some(shared_secret);
+
+                    debug!(
+                        "Decrypted shared secret: {:?}",
+                        self.encryption_state.as_ref().unwrap().shared_secret
+                    );
+
+                    let mut hasher = Sha1::new();
+                    hasher.update("".as_bytes());
+                    hasher.update(shared_secret);
+                    hasher.update(
+                        &self
+                            .server_state
+                            .as_ref()
+                            .unwrap()
+                            .read()
+                            .await
+                            .private_key
+                            .to_public_key()
+                            .to_pkcs1_der()?
+                            .as_bytes()
+                            .to_vec(),
+                    );
+                    let hash = hasher.finalize();
+
+                    let mut result =
+                        num_bigint::BigInt::from_bytes_be(num_bigint::Sign::Plus, &hash);
+
+                    if hash[0] & 0x80 != 0 {
+                        result = result - (num_bigint::BigInt::from(1) << (hash.len() * 8));
+                    }
+
+                    let resp = reqwest::get(format!(
+                        "https://sessionserver.mojang.com/session/minecraft/hasJoined?username={}&serverId={}",
+                        self.player_info.as_ref().unwrap().name,
+                        format!("{:x}", result),
+                    )) x
+                        .await?;
+                    debug!("{:?}", resp);
+                    debug!("{:?}", resp.text().await?);
+                    panic!();
+
+                    let resp = resp.json::<MojangAuthenticateResult>().await?;
+
+                    self.stream
+                        .write_packet(PacketRegistry::Login(LoginPacket::LoginSuccess(
+                            LoginSuccess {
+                                profile: GameProfile {
+                                    uuid: types::Uuid(resp.id),
+                                    username: types::String(resp.name),
+                                    properties: PrefixedArray(
+                                        resp.properties.iter().map(|p| p.into()).collect(),
+                                    ),
+                                },
+                            },
+                        )))
+                        .await?;
+
+                    debug!("login success sent")
+                } else {
+                    self.stream
+                        .write_packet(PacketRegistry::Login(LoginPacket::DisconnectClient(
+                            DisconnectClient::text("Unable to verify token".into()),
+                        )))
+                        .await?;
+                }
+            }
+            LoginPacket::LoginPluginResponse(_) => {}
+            LoginPacket::LoginAcknowledged(packet) => {
+                debug!("login acknowledged");
+            }
+            LoginPacket::CookieResponse(_) => {}
+            _ => Err(eyre!("Invalid packet received"))?,
+        }
+
+        Ok(())
     }
 }
 
 impl Server {
     pub async fn new(config: Config) -> Result<Self> {
+        let mut rng = OsRng;
+        let bits = 1024;
+        let private_key = RsaPrivateKey::new(&mut rng, bits)?;
+
         let bind = format!("0.0.0.0:{}", config.server_port);
         let listener = TcpListener::bind(&bind).await?;
         info!("listening on {}", &bind);
 
-        let state = Arc::new(RwLock::new(ServerState::new(config)));
+        let state = Arc::new(RwLock::new(ServerState::new(config, private_key)));
 
         Ok(Server { listener, state })
     }

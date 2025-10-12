@@ -1,4 +1,4 @@
-use crate::protocol::types::uuid::Uuid;
+use crate::protocol::types::Uuid;
 use crate::protocol::types::{PrefixedArray, Property, String, Type};
 use std::io::Cursor;
 

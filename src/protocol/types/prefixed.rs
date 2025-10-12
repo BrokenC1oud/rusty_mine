@@ -1,5 +1,5 @@
 use crate::protocol::types::{Boolean, Type, VarInt};
-use std::io::{Cursor, Read, Write};
+use std::io::{Cursor, Write};
 
 #[derive(Debug)]
 pub struct PrefixedArray<I>(pub Vec<I>);
