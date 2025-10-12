@@ -85,33 +85,23 @@ where
     }
 
     async fn read_varint(&mut self) -> Result<VarInt> {
-        // Read bytes one-by-one and decode VarInt inline. This avoids attempting
-        // to decode from a partial buffer (which would error with "failed to
-        // fill whole buffer") and correctly handles the continuation bit.
-        let mut num_read: u32 = 0;
-        let mut result: i32 = 0;
+        let mut varint_buf = Vec::with_capacity(5);
 
-        loop {
+        for _ in 0..5 {
             let mut byte = [0u8; 1];
             self.0.read_exact(&mut byte).await?;
+            varint_buf.push(byte[0]);
 
-            let value = (byte[0] & 0x7F) as i32;
-            result |= value << (7 * num_read);
-
-            num_read += 1;
-            if num_read > 5 {
-                return Err(eyre!("VarInt too long"));
-            }
-
-            if byte[0] & 0x80 == 0 {
-                break;
+            match <VarInt as Type>::read(&mut Cursor::new(&mut varint_buf)) {
+                Ok(length) => return Ok(length),
+                Err(_) => {},
             }
         }
 
-        Ok(VarInt(result))
+        Err(eyre!("VarInt too long"))
     }
 
-    async fn read_packet_length(&mut self) -> Result<usize> {
+    pub async fn read_packet_length(&mut self) -> Result<usize> {
         let packet_length = usize::try_from(self.read_varint().await?)?;
 
         Ok(packet_length)

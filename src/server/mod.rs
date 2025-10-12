@@ -150,12 +150,7 @@ impl Server {
                     let state_clone_ = self.state.clone();
                     let client = Client::new(socket);
                     tokio::spawn(async move {
-                        if let Err(e) = client.handle_client(state_clone).await {
-                            error!("client handler error: {:?}", e);
-                        }
-                        // Ensure we decrement online count when the task finishes.
-                        // Decrement online count. Awaiting the write lock here is fine
-                        // because this is running inside the background task.
+                        client.handle_client(state_clone).await.unwrap();
                         state_clone_.write().await.online -= 1;
                     });
                 }
