@@ -8,6 +8,7 @@ use std::io::Cursor;
 use crate::protocol::packets::status::{PingRequest, PongResponse, StatusRequest, StatusResponse};
 
 pub trait Packet: Sized {
+    const PACKET_ID: u8;
     fn read(reader: &mut Cursor<&[u8]>) -> Result<Self>;
 
     fn write(&self, writer: &mut Vec<u8>) -> Result<()>;
@@ -22,7 +23,7 @@ impl HandshakingPacket {
     pub fn parse(raw_packet: RawPacket) -> Result<Self> {
         if let Some(packet_id) = raw_packet.packet_id() {
             match packet_id {
-                0x00 => return Ok(HandshakingPacket::Handshake(Handshake::read(&mut Cursor::new(&raw_packet.content()))?)),
+                Handshake::PACKET_ID => return Ok(HandshakingPacket::Handshake(Handshake::read(&mut Cursor::new(&raw_packet.content()))?)),
                 _ => {}
             }
         }
@@ -43,8 +44,8 @@ impl StatusPacket {
     pub fn parse(raw_packet: RawPacket) -> Result<Self> {
         if let Some(packet_id) = raw_packet.packet_id() {
             match packet_id {
-                0x00 => return Ok(StatusPacket::StatusRequest(StatusRequest::read(&mut Cursor::new(&raw_packet.content()))?)),
-                0x01 => return Ok(StatusPacket::PingRequest(PingRequest::read(&mut Cursor::new(&raw_packet.content()))?)),
+                StatusRequest::PACKET_ID => return Ok(StatusPacket::StatusRequest(StatusRequest::read(&mut Cursor::new(&raw_packet.content()))?)),
+                PingRequest::PACKET_ID => return Ok(StatusPacket::PingRequest(PingRequest::read(&mut Cursor::new(&raw_packet.content()))?)),
                 _ => {},
             }
         }

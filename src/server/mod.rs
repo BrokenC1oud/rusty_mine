@@ -86,7 +86,7 @@ impl Client {
 
     pub async fn handle_status_packet(&mut self, packet: StatusPacket) -> Result<()> {
         match packet {
-            StatusPacket::StatusRequest(packet) => {
+            StatusPacket::StatusRequest(_) => {
                 let resp = ServerListPingStatusResponse {
                     version: Version {
                         name: self.server_state.as_ref().unwrap().read().await.version_name.clone(),

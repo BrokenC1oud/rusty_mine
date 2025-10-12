@@ -79,6 +79,7 @@ where
             }
         }
 
+        self.0.write_u8(buffer.len() as u8).await?;
         self.0.write_all(&buffer).await?;
 
         Ok(())
