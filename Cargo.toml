@@ -1,0 +1,22 @@
+[package]
+name = "rusty_mine"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+resolver = "3"
+members = [
+    ".",
+    "macros"
+]
+
+[dependencies]
+clap = { version = "4.5.48", features = ["derive"] }
+tokio = { version = "1.47.1", features = ["full"] }
+eyre = "0.6.12"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde-java-properties = "0.2.0"
+
+macros = { path = "macros" }
