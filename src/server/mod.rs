@@ -1,3 +1,5 @@
+use std::io;
+use std::io::ErrorKind;
 use std::sync::Arc;
 use crate::config::Config;
 use eyre::{eyre, Result};
@@ -59,7 +61,20 @@ impl Client {
         self.server_state.as_ref().unwrap().write().await.online += 1;
 
         loop {
-            let packet = self.stream.read_packet(&self.protocol_state).await?;
+            let packet = self.stream.read_packet(&self.protocol_state).await;
+
+            let packet = match packet {
+                Ok(packet) => packet,
+                Err(e) => {
+                    if let Some(io_error) = e.downcast_ref::<io::Error>() {
+                        if io_error.kind() == ErrorKind::UnexpectedEof {
+                            debug!("client disconnected");
+                            return Ok(())
+                        }
+                    }
+                    return Err(e)
+                },
+            };
 
             match packet {
                 PacketRegistry::Handshaking(handshaking_packet) => self.handle_handshaking_packet(handshaking_packet).await?,
