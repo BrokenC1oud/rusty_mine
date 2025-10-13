@@ -309,6 +309,8 @@ impl Client {
 
                     debug!("Decrypted shared secret: {:?}", shared_secret);
 
+                    self.stream.enable_encryption(&shared_secret.clone(), &shared_secret);
+
                     let public_key_der = self
                         .server_state
                         .as_ref()

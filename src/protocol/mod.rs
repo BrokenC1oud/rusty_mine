@@ -3,10 +3,11 @@ use crate::protocol::packets::{
 };
 use crate::protocol::types::Type;
 use crate::protocol::types::VarInt;
-use eyre::{Result, eyre};
-use std::io::Cursor;
 use aes::Aes128;
-use cfb8::{Decryptor, Encryptor};
+use cfb_mode::cipher::{AsyncStreamCipher, KeyIvInit};
+use cfb_mode::{BufDecryptor, BufEncryptor};
+use eyre::{eyre, Result};
+use std::io::Cursor;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub mod login;
@@ -43,8 +44,8 @@ where
     S: AsyncRead + AsyncWrite + Unpin,
 {
     stream: S,
-    encryptor: Option<Encryptor<Aes128>>,
-    decryptor: Option<Decryptor<Aes128>>,
+    encryptor: Option<BufEncryptor<Aes128>>,
+    decryptor: Option<BufDecryptor<Aes128>>,
 }
 
 impl<S> PacketStream<S>
@@ -63,9 +64,14 @@ where
         let packet_length = self.read_packet_length().await?;
 
         let mut data = vec![0; packet_length];
-        self.stream.read_exact(&mut data).await?;
+        self.read_exact(&mut data).await?;
 
         Ok(RawPacket(data))
+    }
+
+    pub fn enable_encryption(&mut self, shared_secret: &[u8], iv: &[u8]) {
+        self.encryptor = Some(cfb_mode::BufEncryptor::new(shared_secret.try_into().unwrap(), iv.try_into().unwrap()));
+        self.decryptor = Some(cfb_mode::BufDecryptor::new(shared_secret.try_into().unwrap(), iv.try_into().unwrap()));
     }
 
     pub async fn read_packet(&mut self, protocol_state: &ProtocolState) -> Result<PacketRegistry> {
@@ -105,8 +111,8 @@ where
         let mut length_buf: Vec<u8> = Vec::new();
         VarInt(buffer.len() as i32).write(&mut length_buf)?;
 
-        self.stream.write_all(&length_buf).await?;
-        self.stream.write_all(&buffer).await?;
+        self.write_all(&length_buf).await?;
+        self.write_all(&buffer).await?;
 
         Ok(())
     }
@@ -116,7 +122,7 @@ where
 
         for _ in 0..5 {
             let mut byte = [0u8; 1];
-            self.stream.read_exact(&mut byte).await?;
+            self.read_exact(&mut byte).await?;
             varint_buf.push(byte[0]);
 
             match <VarInt as Type>::read(&mut Cursor::new(&mut varint_buf)) {
@@ -132,5 +138,25 @@ where
         let packet_length = usize::try_from(self.read_varint().await?)?;
 
         Ok(packet_length)
+    }
+
+    async fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
+        self.stream.read_exact(buf).await?;
+        if let Some(decryptor) = &mut self.decryptor {
+            decryptor.decrypt(buf);
+        }
+        Ok(())
+    }
+
+    pub async fn write_all(&mut self, buf: &[u8]) -> Result<()> {
+        let mut buffer = buf.to_vec();
+
+        if let Some(encryptor) = &mut self.encryptor {
+            encryptor.encrypt(&mut buffer);
+        }
+
+        self.stream.write_all(&buffer).await?;
+
+        Ok(())
     }
 }

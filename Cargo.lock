@@ -170,10 +170,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "cfb8"
-version = "0.8.1"
+name = "cfb-mode"
+version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "014c0a0e1ad0dae6a86c082db2f9bd7fe8c2c734227047d0d8b4d4a3a094a1e1"
+checksum = "738b8d467867f80a71351933f70461f5b56f24d5c93e0cf216e59229c968d330"
 dependencies = [
  "cipher",
 ]
@@ -1414,7 +1414,7 @@ name = "rusty_mine"
 version = "0.1.0"
 dependencies = [
  "aes",
- "cfb8",
+ "cfb-mode",
  "clap",
  "eyre",
  "macros",
