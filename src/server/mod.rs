@@ -4,17 +4,16 @@ use crate::protocol::packets::login::{DisconnectClient, EncryptionRequest, Login
 use crate::protocol::packets::status::{PongResponse, StatusResponse};
 use crate::protocol::packets::{HandshakingPacket, LoginPacket, PacketRegistry, StatusPacket};
 use crate::protocol::types::{Boolean, Byte, GameProfile, PrefixedArray};
-use crate::protocol::utils::{Description, Players, ServerListPingStatusResponse, Version};
+use crate::protocol::utils::{
+    Description, Players, ServerListPingStatusResponse, Version,
+};
 use crate::protocol::{PacketStream, ProtocolState, types};
 use eyre::{Result, eyre};
-use rsa::pkcs1::EncodeRsaPublicKey;
 use rsa::pkcs8::EncodePublicKey;
 use rsa::rand_core::{OsRng, RngCore};
 use rsa::{Pkcs1v15Encrypt, RsaPrivateKey};
-use sha1::{Digest, Sha1};
 use std::io;
-use std::io::ErrorKind;
-use std::str::FromStr;
+use std::io::{ErrorKind, Write};
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::RwLock;
@@ -323,42 +322,34 @@ impl Client {
                         self.encryption_state.as_ref().unwrap().shared_secret
                     );
 
-                    let mut hasher = Sha1::new();
-                    hasher.update("".as_bytes());
-                    hasher.update(shared_secret);
-                    hasher.update(
-                        &self
-                            .server_state
-                            .as_ref()
-                            .unwrap()
-                            .read()
-                            .await
-                            .private_key
-                            .to_public_key()
-                            .to_pkcs1_der()?
-                            .as_bytes()
-                            .to_vec(),
-                    );
-                    let hash = hasher.finalize();
+                    let public_key_der = self
+                        .server_state
+                        .as_ref()
+                        .unwrap()
+                        .read()
+                        .await
+                        .private_key
+                        .to_public_key()
+                        .to_public_key_der()?
+                        .to_vec();
 
-                    let mut result =
-                        num_bigint::BigInt::from_bytes_be(num_bigint::Sign::Plus, &hash);
+                    let mut hash =
+                        openssl::hash::Hasher::new(openssl::hash::MessageDigest::sha1())?;
+                    hash.write("".as_bytes())?;
+                    hash.write(&shared_secret)?;
+                    hash.write(&public_key_der)?;
+                    let hash = hash.finish()?.to_vec();
 
-                    if hash[0] & 0x80 != 0 {
-                        result = result - (num_bigint::BigInt::from(1) << (hash.len() * 8));
-                    }
+                    debug!("serverIdHash: {:?}", hash);
 
                     let resp = reqwest::get(format!(
                         "https://sessionserver.mojang.com/session/minecraft/hasJoined?username={}&serverId={}",
                         self.player_info.as_ref().unwrap().name,
-                        format!("{:x}", result),
-                    )) x
+                        num_bigint::BigInt::from_signed_bytes_be(&hash).to_str_radix(16),
+                    ))
+                        .await?
+                        .json::<MojangAuthenticateResult>()
                         .await?;
-                    debug!("{:?}", resp);
-                    debug!("{:?}", resp.text().await?);
-                    panic!();
-
-                    let resp = resp.json::<MojangAuthenticateResult>().await?;
 
                     self.stream
                         .write_packet(PacketRegistry::Login(LoginPacket::LoginSuccess(
@@ -384,8 +375,9 @@ impl Client {
                 }
             }
             LoginPacket::LoginPluginResponse(_) => {}
-            LoginPacket::LoginAcknowledged(packet) => {
+            LoginPacket::LoginAcknowledged(_) => {
                 debug!("login acknowledged");
+                self.protocol_state = ProtocolState::Configuration;
             }
             LoginPacket::CookieResponse(_) => {}
             _ => Err(eyre!("Invalid packet received"))?,
