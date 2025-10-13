@@ -36,23 +36,26 @@ impl RawPacket {
 }
 
 #[derive(Debug)]
-pub struct PacketStream<S>(S)
+pub struct PacketStream<S>
 where
-    S: AsyncRead + AsyncWrite + Unpin;
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    stream: S,
+}
 
 impl<S> PacketStream<S>
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
     pub fn new(stream: S) -> Self {
-        Self(stream)
+        Self { stream }
     }
 
     pub async fn read_raw_packet(&mut self) -> Result<RawPacket> {
         let packet_length = self.read_packet_length().await?;
 
         let mut data = vec![0; packet_length];
-        self.0.read_exact(&mut data).await?;
+        self.stream.read_exact(&mut data).await?;
 
         Ok(RawPacket(data))
     }
@@ -93,8 +96,9 @@ where
 
         let mut length_buf: Vec<u8> = Vec::new();
         VarInt(buffer.len() as i32).write(&mut length_buf)?;
-        self.0.write_all(&length_buf).await?;
-        self.0.write_all(&buffer).await?;
+
+        self.stream.write_all(&length_buf).await?;
+        self.stream.write_all(&buffer).await?;
 
         Ok(())
     }
@@ -104,7 +108,7 @@ where
 
         for _ in 0..5 {
             let mut byte = [0u8; 1];
-            self.0.read_exact(&mut byte).await?;
+            self.stream.read_exact(&mut byte).await?;
             varint_buf.push(byte[0]);
 
             match <VarInt as Type>::read(&mut Cursor::new(&mut varint_buf)) {

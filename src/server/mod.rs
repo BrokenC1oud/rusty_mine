@@ -4,16 +4,15 @@ use crate::protocol::packets::login::{DisconnectClient, EncryptionRequest, Login
 use crate::protocol::packets::status::{PongResponse, StatusResponse};
 use crate::protocol::packets::{HandshakingPacket, LoginPacket, PacketRegistry, StatusPacket};
 use crate::protocol::types::{Boolean, Byte, GameProfile, PrefixedArray};
-use crate::protocol::utils::{
-    Description, Players, ServerListPingStatusResponse, Version,
-};
+use crate::protocol::utils::{Description, Players, ServerListPingStatusResponse, Version};
 use crate::protocol::{PacketStream, ProtocolState, types};
 use eyre::{Result, eyre};
 use rsa::pkcs8::EncodePublicKey;
 use rsa::rand_core::{OsRng, RngCore};
 use rsa::{Pkcs1v15Encrypt, RsaPrivateKey};
+use sha1::{Digest, Sha1};
 use std::io;
-use std::io::{ErrorKind, Write};
+use std::io::ErrorKind;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::RwLock;
@@ -333,12 +332,11 @@ impl Client {
                         .to_public_key_der()?
                         .to_vec();
 
-                    let mut hash =
-                        openssl::hash::Hasher::new(openssl::hash::MessageDigest::sha1())?;
-                    hash.write("".as_bytes())?;
-                    hash.write(&shared_secret)?;
-                    hash.write(&public_key_der)?;
-                    let hash = hash.finish()?.to_vec();
+                    let mut hash = Sha1::new();
+                    hash.update("".as_bytes());
+                    hash.update(&shared_secret);
+                    hash.update(&public_key_der);
+                    let hash = hash.finalize().to_vec();
 
                     debug!("serverIdHash: {:?}", hash);
 
