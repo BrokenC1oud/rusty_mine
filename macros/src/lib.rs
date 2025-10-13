@@ -2,6 +2,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, Fields, Lit, Meta, parse_macro_input};
 
+/// Derive macro for Packet trait.
 #[proc_macro_derive(Packet, attributes(packet))]
 pub fn derive_trait_func(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

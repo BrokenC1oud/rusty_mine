@@ -14,6 +14,7 @@ use crate::protocol::packets::status::{PingRequest, PongResponse, StatusRequest,
 use eyre::{Result, eyre};
 use std::io::Cursor;
 
+/// Trait for packets
 pub trait Packet: Sized {
     const PACKET_ID: u8;
     fn read(reader: &mut Cursor<&[u8]>) -> Result<Self>;

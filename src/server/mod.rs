@@ -1,5 +1,5 @@
 use crate::config::Config;
-use crate::protocol::login::{EncryptionState, LoginState, MojangAuthenticateResult};
+use crate::protocol::login::{LoginState, MojangAuthenticateResult};
 use crate::protocol::packets::login::{DisconnectClient, EncryptionRequest, LoginSuccess};
 use crate::protocol::packets::status::{PongResponse, StatusResponse};
 use crate::protocol::packets::{HandshakingPacket, LoginPacket, PacketRegistry, StatusPacket};
@@ -64,7 +64,6 @@ pub struct Client {
 
     protocol_state: ProtocolState,
     login_state: Option<LoginState>,
-    encryption_state: Option<EncryptionState>,
 
     player_info: Option<PlayerInfo>,
 
@@ -78,7 +77,6 @@ impl Client {
 
             protocol_state: ProtocolState::Handshaking,
             login_state: None,
-            encryption_state: None,
 
             player_info: None,
 
@@ -226,13 +224,16 @@ impl Client {
                         .await?;
 
                     Err(eyre!("Invalid Login Sequence"))?
-                } else {
-                    self.login_state = Some(LoginState::Start);
-                    self.player_info = Some(PlayerInfo {
-                        name: packet.name.0,
-                        uuid: packet.uuid.0,
-                    });
                 }
+
+                let verify_token = OsRng.next_u32().to_be_bytes();
+                debug!("verify_token: {:?}", verify_token);
+
+                self.login_state = Some(LoginState::Start(verify_token));
+                self.player_info = Some(PlayerInfo {
+                    name: packet.name.0,
+                    uuid: packet.uuid.0,
+                });
 
                 let public_key = self
                     .server_state
@@ -244,16 +245,6 @@ impl Client {
                     .to_public_key()
                     .to_public_key_der()?
                     .to_vec();
-
-                let verify_token = OsRng.next_u32().to_be_bytes();
-
-                debug!("verify_token: {:?}", verify_token);
-
-                self.encryption_state = Some(EncryptionState {
-                    verify_token,
-                    shared_secret: None,
-                    initial_vector: None,
-                });
 
                 self.stream
                     .write_packet(PacketRegistry::Login(LoginPacket::EncryptionRequest(
@@ -271,6 +262,12 @@ impl Client {
                     .await?;
             }
             LoginPacket::EncryptionResponse(packet) => {
+                let verify_token = if let Some(LoginState::Start(verify_token)) = self.login_state {
+                    verify_token
+                } else {
+                    Err(eyre!("Invalid Login Sequence"))?
+                };
+
                 let deciphered_verify_token = self
                     .server_state
                     .as_ref()
@@ -289,8 +286,7 @@ impl Client {
                     )?;
                 debug!("deciphered_verify_token: {:?}", deciphered_verify_token);
 
-                if &deciphered_verify_token == &self.encryption_state.as_ref().unwrap().verify_token
-                {
+                if &deciphered_verify_token == &verify_token {
                     debug!("which is a match");
                     self.login_state = Some(LoginState::Verified);
 
@@ -309,17 +305,9 @@ impl Client {
                                 .iter()
                                 .map(|b| b.0)
                                 .collect::<Vec<_>>(),
-                        )?
-                        .try_into()
-                        .map_err(|e| eyre!("Failed to decrypt shared secret: {:?}", e))?;
+                        )?;
 
-                    self.encryption_state.as_mut().unwrap().shared_secret = Some(shared_secret);
-                    self.encryption_state.as_mut().unwrap().initial_vector = Some(shared_secret);
-
-                    debug!(
-                        "Decrypted shared secret: {:?}",
-                        self.encryption_state.as_ref().unwrap().shared_secret
-                    );
+                    debug!("Decrypted shared secret: {:?}", shared_secret);
 
                     let public_key_der = self
                         .server_state

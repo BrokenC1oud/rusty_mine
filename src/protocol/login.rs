@@ -5,15 +5,8 @@ use uuid::Uuid;
 
 #[derive(Debug)]
 pub enum LoginState {
-    Start,    // before C -> S: Encryption Response
-    Verified, // before C -> S:
-}
-
-#[derive(Debug)]
-pub struct EncryptionState {
-    pub verify_token: [u8; 4],
-    pub shared_secret: Option<[u8; 16]>,
-    pub initial_vector: Option<[u8; 16]>,
+    Start([u8; 4]), // before C -> S: Encryption Response
+    Verified,       // before C -> S:
 }
 
 #[derive(Serialize, Deserialize, Debug)]

@@ -17,3 +17,9 @@ impl Type for Byte {
         Ok(())
     }
 }
+
+impl From<u8> for Byte {
+    fn from(value: u8) -> Self {
+        Self(value)
+    }
+}

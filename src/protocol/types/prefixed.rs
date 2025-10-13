@@ -1,5 +1,6 @@
 use crate::protocol::types::{Boolean, Type, VarInt};
 use std::io::{Cursor, Write};
+use std::ops::Deref;
 
 #[derive(Debug)]
 pub struct PrefixedArray<I>(pub Vec<I>);
@@ -22,6 +23,14 @@ impl<I: Type> Type for PrefixedArray<I> {
         }
 
         Ok(())
+    }
+}
+
+impl<I> Deref for PrefixedArray<I> {
+    type Target = Vec<I>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
