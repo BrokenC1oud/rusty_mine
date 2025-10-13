@@ -5,6 +5,8 @@ use crate::protocol::types::Type;
 use crate::protocol::types::VarInt;
 use eyre::{Result, eyre};
 use std::io::Cursor;
+use aes::Aes128;
+use cfb8::{Decryptor, Encryptor};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub mod login;
@@ -41,6 +43,8 @@ where
     S: AsyncRead + AsyncWrite + Unpin,
 {
     stream: S,
+    encryptor: Option<Encryptor<Aes128>>,
+    decryptor: Option<Decryptor<Aes128>>,
 }
 
 impl<S> PacketStream<S>
@@ -48,7 +52,11 @@ where
     S: AsyncRead + AsyncWrite + Unpin,
 {
     pub fn new(stream: S) -> Self {
-        Self { stream }
+        Self {
+            stream,
+            encryptor: None,
+            decryptor: None,
+        }
     }
 
     pub async fn read_raw_packet(&mut self) -> Result<RawPacket> {
