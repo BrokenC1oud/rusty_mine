@@ -28,3 +28,4 @@ num-bigint = "0.4.6"
 macros = { path = "macros" }
 aes = "0.8.4"
 cfb-mode = "0.8.2"
+simdnbt = "0.8.0"

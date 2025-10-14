@@ -4,11 +4,17 @@ pub mod login;
 pub mod status;
 
 use crate::protocol::RawPacket;
+use crate::protocol::packets::configuration::{
+    AcknowledgeFinishConfiguration, AddResourcePack, C2SKeepAlive, C2SKnownPacks, C2SPluginMessage,
+    ClearDialog, ClientInformation, CustomClickAction, CustomReportDetails, Disconnect,
+    FeatureFlags, FinishConfiguration, Ping, Pong, RegistryData, RemoveResourcePack, ResetChat,
+    ResourcePackResponse, S2CKeepAlive, S2CKnownPacks, S2CPluginMessage, ServerLinks, ShowDialog,
+    StoreCookie, Transfer, UpdateTags,
+};
 use crate::protocol::packets::handshaking::Handshake;
 use crate::protocol::packets::login::{
-    CookieRequest, CookieResponse, DisconnectClient, EncryptionRequest, EncryptionResponse,
-    LoginAcknowledged, LoginPluginRequest, LoginPluginResponse, LoginStart, LoginSuccess,
-    SetCompression,
+    CookieResponse, DisconnectClient, EncryptionRequest, EncryptionResponse, LoginAcknowledged,
+    LoginPluginRequest, LoginPluginResponse, LoginStart, LoginSuccess, SetCompression,
 };
 use crate::protocol::packets::status::{PingRequest, PongResponse, StatusRequest, StatusResponse};
 use eyre::{Result, eyre};
@@ -87,7 +93,7 @@ pub enum LoginPacket {
     LoginSuccess(LoginSuccess),
     SetCompression(SetCompression),
     LoginPluginRequest(LoginPluginRequest),
-    CookieRequest(CookieRequest),
+    CookieRequest(login::CookieRequest),
 }
 
 impl LoginPacket {
@@ -128,10 +134,83 @@ impl LoginPacket {
 }
 
 #[derive(Debug)]
+pub enum ConfigurationPacket {
+    CookieRequest(configuration::CookieRequest),
+    S2CPluginMessage(S2CPluginMessage),
+    Disconnect(Disconnect),
+    FinishConfiguration(FinishConfiguration),
+    S2CKeepAlive(S2CKeepAlive),
+    Ping(Ping),
+    ResetChat(ResetChat),
+    RegistryData(RegistryData),
+    RemoveResourcePack(RemoveResourcePack),
+    AddResourcePack(AddResourcePack),
+    StoreCookie(StoreCookie),
+    Transfer(Transfer),
+    FeatureFlags(FeatureFlags),
+    UpdateTags(UpdateTags),
+    S2CKnownPacks(S2CKnownPacks),
+    CustomReportDetails(CustomReportDetails),
+    ServerLinks(ServerLinks),
+    ClearDialog(ClearDialog),
+    ShowDialog(ShowDialog),
+
+    ClientInformation(ClientInformation),
+    CookieResponse(CookieResponse),
+    C2SPluginMessage(C2SPluginMessage),
+    AcknowledgeFinishConfiguration(AcknowledgeFinishConfiguration),
+    C2SKeepAlive(C2SKeepAlive),
+    Pong(Pong),
+    ResourcePackResponse(ResourcePackResponse),
+    C2SKnownPacks(C2SKnownPacks),
+    CustomClickAction(CustomClickAction),
+}
+
+impl ConfigurationPacket {
+    pub fn parse(raw_packet: RawPacket) -> Result<Self> {
+        if let Some(packet_id) = raw_packet.packet_id() {
+            match packet_id {
+                ClientInformation::PACKET_ID => {
+                    return Ok(ConfigurationPacket::ClientInformation(ClientInformation::read(&mut Cursor::new(&raw_packet.content()))?));
+                }
+                configuration::CookieResponse::PACKET_ID => {
+                    return Ok(ConfigurationPacket::CookieResponse(CookieResponse::read(&mut Cursor::new(&raw_packet.content()))?));
+                }
+                C2SPluginMessage::PACKET_ID => {
+                    return Ok(ConfigurationPacket::C2SPluginMessage(C2SPluginMessage::read(&mut Cursor::new(&raw_packet.content()))?));
+                }
+                AcknowledgeFinishConfiguration::PACKET_ID => {
+                    return Ok(ConfigurationPacket::AcknowledgeFinishConfiguration(AcknowledgeFinishConfiguration::read(&mut Cursor::new(&raw_packet.content()))?));
+                }
+                C2SKeepAlive::PACKET_ID => {
+                    return Ok(ConfigurationPacket::C2SKeepAlive(C2SKeepAlive::read(&mut Cursor::new(&raw_packet.content()))?));
+                }
+                Pong::PACKET_ID => {
+                    return Ok(ConfigurationPacket::Pong(Pong::read(&mut Cursor::new(&raw_packet.content()))?));
+                }
+                ResourcePackResponse::PACKET_ID => {
+                    return Ok(ConfigurationPacket::ResourcePackResponse(ResourcePackResponse::read(&mut Cursor::new(&raw_packet.content()))?));
+                }
+                C2SKnownPacks::PACKET_ID => {
+                    return Ok(ConfigurationPacket::C2SKnownPacks(C2SKnownPacks::read(&mut Cursor::new(&raw_packet.content()))?));
+                }
+                CustomClickAction::PACKET_ID => {
+                    return Ok(ConfigurationPacket::CustomClickAction(CustomClickAction::read(&mut Cursor::new(&raw_packet.content()))?));
+                }
+                _ => {}
+            }
+        }
+
+        Err(eyre!("Invalid Packet ID").into())
+    }
+}
+
+#[derive(Debug)]
 pub enum PacketRegistry {
     Handshaking(HandshakingPacket),
     Status(StatusPacket),
     Login(LoginPacket),
+    Configuration(ConfigurationPacket),
 }
 
 impl PacketRegistry {
@@ -148,5 +227,10 @@ impl PacketRegistry {
     pub fn parse_login(raw_packet: RawPacket) -> Result<Self> {
         let packet = LoginPacket::parse(raw_packet)?;
         Ok(PacketRegistry::Login(packet))
+    }
+
+    pub fn parse_configuration(raw_packet: RawPacket) -> Result<Self> {
+        let packet = ConfigurationPacket::parse(raw_packet)?;
+        Ok(PacketRegistry::Configuration(packet))
     }
 }

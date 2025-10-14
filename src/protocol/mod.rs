@@ -1,12 +1,10 @@
-use crate::protocol::packets::{
-    HandshakingPacket, LoginPacket, Packet, PacketRegistry, StatusPacket,
-};
+use crate::protocol::packets::{ConfigurationPacket, HandshakingPacket, LoginPacket, Packet, PacketRegistry, StatusPacket};
 use crate::protocol::types::Type;
 use crate::protocol::types::VarInt;
 use aes::Aes128;
-use cfb_mode::cipher::{AsyncStreamCipher, KeyIvInit};
+use cfb_mode::cipher::KeyIvInit;
 use cfb_mode::{BufDecryptor, BufEncryptor};
-use eyre::{eyre, Result};
+use eyre::{Result, eyre};
 use std::io::Cursor;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
@@ -70,8 +68,14 @@ where
     }
 
     pub fn enable_encryption(&mut self, shared_secret: &[u8], iv: &[u8]) {
-        self.encryptor = Some(cfb_mode::BufEncryptor::new(shared_secret.try_into().unwrap(), iv.try_into().unwrap()));
-        self.decryptor = Some(cfb_mode::BufDecryptor::new(shared_secret.try_into().unwrap(), iv.try_into().unwrap()));
+        self.encryptor = Some(cfb_mode::BufEncryptor::new(
+            shared_secret.try_into().unwrap(),
+            iv.try_into().unwrap(),
+        ));
+        self.decryptor = Some(cfb_mode::BufDecryptor::new(
+            shared_secret.try_into().unwrap(),
+            iv.try_into().unwrap(),
+        ));
     }
 
     pub async fn read_packet(&mut self, protocol_state: &ProtocolState) -> Result<PacketRegistry> {
@@ -81,7 +85,7 @@ where
             ProtocolState::Handshaking => PacketRegistry::parse_handshaking(raw_packet),
             ProtocolState::Status => PacketRegistry::parse_status(raw_packet),
             ProtocolState::Login => PacketRegistry::parse_login(raw_packet),
-            ProtocolState::Configuration => todo!(),
+            ProtocolState::Configuration => PacketRegistry::parse_configuration(raw_packet),
             ProtocolState::Play => todo!(),
         }
     }
@@ -106,6 +110,28 @@ where
                 LoginPacket::CookieRequest(real_packet) => real_packet.write(&mut buffer)?,
                 _ => Err(eyre!("Invalid packet not sent"))?,
             },
+            PacketRegistry::Configuration(packet) => match packet {
+                ConfigurationPacket::CookieRequest(real_packet) => real_packet.write(&mut buffer)?,
+                ConfigurationPacket::S2CPluginMessage(real_packet) => real_packet.write(&mut buffer)?,
+                ConfigurationPacket::Disconnect(real_packet) => real_packet.write(&mut buffer)?,
+                ConfigurationPacket::FinishConfiguration(real_packet) => real_packet.write(&mut buffer)?,
+                ConfigurationPacket::S2CKeepAlive(real_packet) => real_packet.write(&mut buffer)?,
+                ConfigurationPacket::Ping(real_packet) => real_packet.write(&mut buffer)?,
+                ConfigurationPacket::ResetChat(real_packet) => real_packet.write(&mut buffer)?,
+                ConfigurationPacket::RegistryData(real_packet) => real_packet.write(&mut buffer)?,
+                ConfigurationPacket::RemoveResourcePack(real_packet) => real_packet.write(&mut buffer)?,
+                ConfigurationPacket::AddResourcePack(real_packet) => real_packet.write(&mut buffer)?,
+                ConfigurationPacket::StoreCookie(real_packet) => real_packet.write(&mut buffer)?,
+                ConfigurationPacket::Transfer(real_packet) => real_packet.write(&mut buffer)?,
+                ConfigurationPacket::FeatureFlags(real_packet) => real_packet.write(&mut buffer)?,
+                ConfigurationPacket::UpdateTags(real_packet) => real_packet.write(&mut buffer)?,
+                ConfigurationPacket::S2CKnownPacks(real_packet) => real_packet.write(&mut buffer)?,
+                ConfigurationPacket::CustomReportDetails(real_packet) => real_packet.write(&mut buffer)?,
+                ConfigurationPacket::ServerLinks(real_packet) => real_packet.write(&mut buffer)?,
+                ConfigurationPacket::ClearDialog(real_packet) => real_packet.write(&mut buffer)?,
+                ConfigurationPacket::ShowDialog(real_packet) => real_packet.write(&mut buffer)?,
+                _ => Err(eyre!("Invalid packet not sent"))?,
+            }
         }
 
         let mut length_buf: Vec<u8> = Vec::new();

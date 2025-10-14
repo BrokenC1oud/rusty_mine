@@ -2,7 +2,7 @@ use crate::config::Config;
 use crate::protocol::login::{LoginState, MojangAuthenticateResult};
 use crate::protocol::packets::login::{DisconnectClient, EncryptionRequest, LoginSuccess};
 use crate::protocol::packets::status::{PongResponse, StatusResponse};
-use crate::protocol::packets::{HandshakingPacket, LoginPacket, PacketRegistry, StatusPacket};
+use crate::protocol::packets::{ConfigurationPacket, HandshakingPacket, LoginPacket, PacketRegistry, StatusPacket};
 use crate::protocol::types::{Boolean, Byte, GameProfile, PrefixedArray};
 use crate::protocol::utils::{Description, Players, ServerListPingStatusResponse, Version};
 use crate::protocol::{PacketStream, ProtocolState, types};
@@ -113,6 +113,9 @@ impl Client {
                 }
                 PacketRegistry::Login(login_packet) => {
                     self.handle_login_packet(login_packet).await?
+                }
+                PacketRegistry::Configuration(configuration_packet) => {
+                    self.handle_configuration_packet(configuration_packet).await?
                 }
             }
         }
@@ -309,7 +312,8 @@ impl Client {
 
                     debug!("Decrypted shared secret: {:?}", shared_secret);
 
-                    self.stream.enable_encryption(&shared_secret.clone(), &shared_secret);
+                    self.stream
+                        .enable_encryption(&shared_secret.clone(), &shared_secret);
 
                     let public_key_der = self
                         .server_state
@@ -371,6 +375,10 @@ impl Client {
             _ => Err(eyre!("Invalid packet received"))?,
         }
 
+        Ok(())
+    }
+
+    pub async fn handle_configuration_packet(&mut self, packet: ConfigurationPacket) -> Result<()> {
         Ok(())
     }
 }
